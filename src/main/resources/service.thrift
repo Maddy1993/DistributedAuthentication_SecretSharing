@@ -1,6 +1,5 @@
-namespace java generated.thrift.impl
+namespace java thrift.impl
 
-//Enum for Packet Types
 enum MessageType {
     PROPOSAL,
     PROMISE,
@@ -13,42 +12,25 @@ enum MessageType {
     FAILURE
 }
 
-//Enum for Operation Types.
 enum OperationType {
     WRITE,
     DELETE,
     GET
 }
 
-//Packet structure for client to server communication
-struct RequestPacket {
-    1:  MessageType         type,
-    2:  OperationType       operationType,
-    3:  map<string, string> keyValue
-}
-
-//Packet structure for server to server communication
-struct ServerPacket {
-    1: MessageType          type,
+struct RPCPacket {
+    1: i32                  type,
     2: string               sequence_number,
-    3: OperationType        operationType,
-    4: map<string, string>  proposalValue
+    3: map<string, string>  keyValue,
+    4: i32                  operationType
 }
 
-//Interface for client to server communication
-service ClientCommunication {
-    RequestPacket   login(1:string hashedPassword),
-    RequestPacket   getValueForKey(1:string key),
+service RPCPacketService {
+    RPCPacket       proposal(1:RPCPacket message),
+    list<string>    replicaAddresses()
+    MessageType     write(1:map<string, string> value, 2:i32 operationType)
     list<string>    getKeys(),
-    RequestPacket   storeKeyValue(1:map<string, string> keyValue),
-    RequestPacket   deleteKey(1:string  key),
-    list<string>    replicaAddresses(),
-    MessageType     ping();
-}
-
-//Interface for server to server communication
-service ServerCommunication {
-    ServerPacket    acceptProposal(1:ServerPacket packet),
-    MessageType     ping(),
-    string          getStoredValue(1:string key)
+    string          getValue(1:string key),
+    string          getValueFromMemory(1:string key),
+    MessageType     ping()
 }

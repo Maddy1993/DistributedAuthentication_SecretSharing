@@ -1,8 +1,8 @@
 package com.northeastern.edu.client;
 
-import generated.thrift.impl.ClientCommunication;
 import generated.thrift.impl.MessageType;
-import generated.thrift.impl.RequestPacket;
+import generated.thrift.impl.OperationType;
+import generated.thrift.impl.RPCPacketService;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocol;
@@ -38,10 +38,10 @@ public class RPCClient {
     private static String serverAddress;
 
     //Replica Server Communication Ports.
-    private static Map<ClientCommunication.Client, Boolean> clients;
+    private static Map<RPCPacketService.Client, Boolean> clients;
 
     //Running Server
-    private static ClientCommunication.Client availableServer;
+    private static RPCPacketService.Client availableServer;
 
     //Random element seed
     private static Random rand;
@@ -108,7 +108,7 @@ public class RPCClient {
             transport.open();
 
             TProtocol protocol = new TBinaryProtocol(transport);
-            ClientCommunication.Client client = new ClientCommunication.Client(protocol);
+            RPCPacketService.Client client = new RPCPacketService.Client(protocol);
 
             //Runs in a while loop until a quit input is received from
             //the user.
@@ -117,7 +117,7 @@ public class RPCClient {
 
             //Gets the random client once all the addresses
             //are retrieved
-            ClientCommunication.Client randomClient = (ClientCommunication.Client) clients.keySet().toArray()[rand.nextInt(clients.size())];
+            RPCPacketService.Client randomClient = (RPCPacketService.Client) clients.keySet().toArray()[rand.nextInt(clients.size())];
             perform(randomClient);
 
             //Close once the method returns.
@@ -145,7 +145,7 @@ public class RPCClient {
             transport.open();
 
             TProtocol protocol = new TBinaryProtocol(transport);
-            ClientCommunication.Client client = new ClientCommunication.Client(protocol);
+            RPCPacketService.Client client = new RPCPacketService.Client(protocol);
             clients.put(client, true);
         }
     }
@@ -155,7 +155,7 @@ public class RPCClient {
      *
      * @param server The thrift processor which represents the client.
      */
-    private static void perform(ClientCommunication.Client server) throws TException {
+    private static void perform(RPCPacketService.Client server) throws TException {
 
         availableServer = server;
         do {
@@ -176,14 +176,13 @@ public class RPCClient {
     }
 
     //Performs the operation based on the input operation.
-    private static void performSelectedOperation(int option, ClientCommunication.Client server, Scanner input) throws TException {
+    private static void performSelectedOperation(int option, RPCPacketService.Client server, Scanner input) throws TException {
         
         //Switch statement to handle the different cases.
-        RequestPacket responseValue;
         String value;
         String key;
         int response;
-        RequestPacket serverResponse;
+        MessageType serverResponse;
         List<String> keys;
         switch (option) {
             case 1:
@@ -205,9 +204,9 @@ public class RPCClient {
                     } while (key.isEmpty());
 
                     //Get the value from the server.
-                    responseValue = server.getValueForKey(key);
-                    if (responseValue.type == MessageType.SUCCESS) {
-                        System.out.println("The value associated with key: " + key + " is " + responseValue.keyValue.get(key));
+                    value = server.getValue(key);
+                    if (!value.equalsIgnoreCase(MessageType.FAILURE.name())) {
+                        System.out.println("The value associated with key: " + key + " is " + value);
                     } else {
                         System.out.println("Key does not exist.");
                     }
@@ -236,9 +235,9 @@ public class RPCClient {
                 try {
                     Map<String, String> mapValue = new HashMap<>();
                     mapValue.put(key, value);
-                    serverResponse = server.storeKeyValue(mapValue);
+                    serverResponse = server.write(mapValue, OperationType.WRITE.getValue());
 
-                    if (serverResponse.type == MessageType.FAILURE) {
+                    if (serverResponse == MessageType.FAILURE) {
                         System.out.println("Error saving the keys at the server");
                     } else {
                         System.out.println("Key saved at the server.");
@@ -270,11 +269,13 @@ public class RPCClient {
                     } while (key.isEmpty());
 
                     //Get the response for deletion from the server.
-                    serverResponse = server.deleteKey(key);
+                    Map<String, String> mapValue = new HashMap<>();
+                    mapValue.put(key, "");
+                    serverResponse = server.write(mapValue, OperationType.DELETE.getValue());
 
-                    if (serverResponse.type == MessageType.SUCCESS) {
+                    if (serverResponse == MessageType.SUCCESS) {
                         System.out.println("Key: " + key + " successfully removed");
-                    } else if (serverResponse.type == MessageType.FAILURE){
+                    } else if (serverResponse == MessageType.FAILURE){
                         System.out.println("Failed to remove key from Replicas.");
                     } else {
                         System.out.println("Invalid Response");
@@ -297,11 +298,11 @@ public class RPCClient {
     }
 
     //Retrieves an available server with healthy status.
-    private static ClientCommunication.Client getAvailableServer() {
+    private static RPCPacketService.Client getAvailableServer() {
         //For retrieving an available server
-        List<ClientCommunication.Client> availableClients = new ArrayList<>();
+        List<RPCPacketService.Client> availableClients = new ArrayList<>();
 
-        for (ClientCommunication.Client client : clients.keySet()) {
+        for (RPCPacketService.Client client : clients.keySet()) {
             try {
                 if (clients.get(client) && client.ping() == MessageType.SUCCESS) {
                     LOGGER.info("Connected to replica at: " + getAddressForClient(client));
@@ -326,7 +327,7 @@ public class RPCClient {
     }
 
     //Gets the socket address for a given client/server object.
-    private static String getAddressForClient(ClientCommunication.Client client) {
+    private static String getAddressForClient(RPCPacketService.Client client) {
         TSocket socket = (TSocket) client.getOutputProtocol().getTransport();
         return socket.getSocket().getRemoteSocketAddress().toString();
     }
