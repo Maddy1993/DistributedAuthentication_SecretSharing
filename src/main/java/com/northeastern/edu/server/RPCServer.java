@@ -1,7 +1,7 @@
 package com.northeastern.edu.server;
 
-import com.northeastern.edu.utils.PaxosImplementation;
-import generated.thrift.impl.RPCPacketService;
+import com.northeastern.edu.utils.ClientServiceHandler;
+import generated.thrift.impl.ClientCommunication;
 import org.apache.thrift.server.TServer;
 import org.apache.thrift.server.TThreadPoolServer;
 import org.apache.thrift.transport.TServerSocket;
@@ -39,10 +39,10 @@ public class RPCServer {
     private static List<Integer> serverCommunicationPorts = new ArrayList<>(4);
 
     //Handler for incoming client requests.
-    private static PaxosImplementation utils;
+    private static ClientServiceHandler utils;
 
     //Processor for RPC service class.
-    private static RPCPacketService.Processor processor;
+    private static ClientCommunication.Processor processor;
 
     /**
      * Used for any setup required before the program execution
@@ -103,10 +103,10 @@ public class RPCServer {
 
         try {
             //Initialize the client handler.
-            utils = new PaxosImplementation(serverCommunicationPorts, portNumber);
+            utils = new ClientServiceHandler(serverCommunicationPorts, portNumber);
 
             //Initialize the processor for thrift server.
-            processor = new RPCPacketService.Processor<>(utils);
+            processor = new ClientCommunication.Processor<>(utils);
 
             Runnable simple = () -> threadedServer(processor);
             Runnable protocolServer = () -> threadedServerCommunication(processor);
@@ -128,7 +128,7 @@ public class RPCServer {
      *
      * @param protocol Thrift processor to initialize the server.
      */
-    private static void threadedServerCommunication(RPCPacketService.Processor protocol) {
+    private static void threadedServerCommunication(ClientCommunication.Processor protocol) {
         try {
             TServerTransport serverTransport = new TServerSocket(serverCommunicationPortNumber);
             TServer server = new TThreadPoolServer(new TThreadPoolServer.Args(serverTransport).processor(protocol));
@@ -148,7 +148,7 @@ public class RPCServer {
      *
      * @param processor Thrift processor to initialize the server with.
      */
-    private static void threadedServer(RPCPacketService.Processor processor) {
+    private static void threadedServer(ClientCommunication.Processor processor) {
         try {
             TServerTransport serverTransport = new TServerSocket(portNumber);
 
