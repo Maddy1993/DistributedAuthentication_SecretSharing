@@ -1,3 +1,5 @@
+package com.northeastern.edu.secretSharing;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.ArrayList;
@@ -7,32 +9,17 @@ import java.util.LinkedList;
 import java.util.List;
 import java.util.Random;
 import java.util.Set;
+
 import javafx.util.Pair;
 
 /**
- * Class that prepares ad reconstructs the secret keys
+ * Class prepares and reconstructs the secret keys
  */
 public class SecretSharing {
     private static String secretString;
     private static BigInteger secret; // s
     private static int n = 5;  // NUM_SHARES
     private static int k = 3; // NUM_SUBSET_REQUIRED
-    private static BigInteger p; //field size
-    //private static int fx; // polynomial
-
-//    public SecretSharing(String secret) {
-//        this.secret = secret;
-//    }
-
-    //Prepartion:
-//    1.) Randomly obtain k-1 numbers
-//    2.) Construct polynomial
-//    3.) Construct n points
-//    4.) Create list of n keys containing point and value p
-
-    // Reconstruction:
-//    1.) Need k keys to reconstruct secret
-//    2.) Reconstruct polynomial using Lagrange Polynomial Interpolation
 
     /**
      * Preparation phase of Secret Sharing
@@ -49,22 +36,29 @@ public class SecretSharing {
         //secret = BigInteger.valueOf(1234);
         System.out.println("Secret: " + secret);
 
-
         // obtain k - 1 random numbers (a1, a2, a3, etc.) to construct polynomial:
         // f(x) = a0 + a1x + a2x^2 + ...
         List <BigInteger> coefs = getCoefficients();
 
-        // Generate field size, p
-        p = getFieldSize();
+//        // Generate field size, p
+//        p = getFieldSize();
 
         // Generate list of Keys
-        return generateKeys(coefs, p);
+        return generateKeys(coefs);
     }
 
-    public static void reconstruction(List<Key> clientKeyList) {
+    /**
+     * Reconstruction phase of Secret Sharing.
+     *  1.) Need k keys to reconstruct secret -> ELSE reconstruction fails
+     *  2.) Reconstruct polynomial using Lagrange Polynomial Interpolation
+     *  3.) Solve for constant value to obtain original secret
+     *  4.) If reconstructd constant does not match original secret -> reconstruction fails
+     * @param clientKeyList
+     */
+    public static boolean reconstruction(List<Key> clientKeyList) {
         // Does client have enough keys to reconstruct secret?
         if (clientKeyList.size() != k) {
-            //return "Insufficient key set.";
+            return false;
         }
 
         // Calculate Lagrange Basis Polynomials l(x)
@@ -80,33 +74,48 @@ public class SecretSharing {
             BigDecimal l = BigDecimal.ONE;
             //int x = 0;
             BigDecimal x = BigDecimal.ZERO;
+
+            // Calculate the constants in the polynomial for each point and sum them together
             for (int m = 0; m < clientKeyList.size(); m++) {
                 BigDecimal xm = BigDecimal.valueOf(clientKeyList.get(m).getPoint().getKey());
                 if (j != m) {
-//                    l = l * ((x - xm) / (xj - xm));
+                    // Lagrange Basis: l = l * ((x - xm) / (xj - xm));
                     BigDecimal numerator = x.subtract(xm).setScale(12, BigDecimal.ROUND_HALF_UP);
                     BigDecimal denominator = xj.subtract(xm).setScale(12, BigDecimal.ROUND_HALF_UP);
                     BigDecimal result = numerator.divide(denominator, BigDecimal.ROUND_HALF_UP);
-                            //(numerator.divide(denominator.setScale(12, BigDecimal.ROUND_HALF_UP)));
                     l = l.multiply(result);
-
                 }
             }
             y = y.add(yj.multiply(l));
         }
-        //y = y.mod(p);
         System.out.println("Y: " + y);
+
+        // Round big decimal Y
         y = y.setScale(0, BigDecimal.ROUND_HALF_UP);
         System.out.println("Yrounded: " + y);
-        BigInteger ymod = y.toBigInteger().mod(p);
-        System.out.println("Y mod: " + ymod);
-        // Convert y back to String secret
-        //return y;
+
+        // Convert y to BigInteger for comparison to secret (BigInteger)
+        BigInteger yConverted = y.toBigInteger();
+
+        System.out.println("Y big Integer: " + yConverted);
+
+        // Check that constructd Y value is equal to Secret value
+        if (yConverted.equals(secret)) {
+            return true;
+        }
+        else {
+            return false;
+        }
+
     }
 
+    /**
+     * Creates the polynomial to the k-1 term: f(x) = a0 + a1x + a2x^2 + ... + (ak-1(x^k-1
+     * @return list of the coeficients in the polynomial, where a0 = value of secret
+     */
     private static List<BigInteger> getCoefficients() {
         Set<BigInteger> setBigInt = new LinkedHashSet<>();
-        // a0 = secret big int value
+        // a0 = secret big integer value
         setBigInt.add(secret);
 
         BigInteger bigInteger = secret;// upper limit
@@ -117,7 +126,7 @@ public class SecretSharing {
 
         BigInteger aRandomBigInt;
 
-
+        // Randomly choose coefficients between 1 and value of secret
         while (setBigInt.size() < k) {
             aRandomBigInt = new BigInteger(maxNumBitLength, rnd);
             if (aRandomBigInt.compareTo(min) < 0)
@@ -128,7 +137,6 @@ public class SecretSharing {
             System.out.println("Coef: " + aRandomBigInt);
         }
 
-        //System.out.println(setBigInt.size());
         // Convert Set to List to allow for iteration by index
         List<BigInteger> coefsList = new ArrayList<BigInteger>(setBigInt);
 
@@ -136,53 +144,32 @@ public class SecretSharing {
 
     }
 
-    private static BigInteger getFieldSize() {
-        // get field value size, p
-        // p = random prime number > S
-
-        BigInteger max = secret.multiply(new BigInteger("10"));
-        BigInteger min = secret;// lower limit
-        BigInteger bigInteger1 = max.subtract(min);
-        Random rnd = new Random();
-        int maxNumBitLength = max.bitLength();
-
-        BigInteger p;
-
-        p = new BigInteger(maxNumBitLength, rnd);
-        if (p.compareTo(min) < 0)
-        {
-            p = p.add(min);
-        }
-        if (p.compareTo(max) >= 0)
-        {
-            p = p.mod(bigInteger1).add(min);
-        }
-        //System.out.println(p);
-
-        return p;
-
-    }
-
     /**
      * Constructs n points from the polynomial
-      * @return
+     * @return List of n points along the polynomial
      */
-    private static List<Key> generateKeys(List<BigInteger> coefs, BigInteger p) {
+    private static List<Key> generateKeys(List<BigInteger> coefs) {
         List<Key> keys = new LinkedList<>();
         Key key;
         // f(x) = a0 + a1x + a2x^2 + ...
+        // Calculates points for when x = 1, 2, ...n
         for (int i = 1; i<= n; i++) {
             BigInteger x = BigInteger.valueOf(i);
             // create key with values point and p
             // Pair<x,y<, where y = f(x) mod p
             //key = new Key(new Pair<>(i, getY(coefs, x).mod(p)), p);
-            key = new Key(new Pair<>(i, getY(coefs, x)), p);
+            key = new Key(new Pair<>(i, getY(coefs, x)));
             keys.add(key);
         }
-
         return keys;
     }
 
+    /**
+     * Calculates the Y value for a given X from the polynomial f(x)
+     * @param coefs
+     * @param x
+     * @return y value from f(x)
+     */
     private static BigInteger getY(List<BigInteger> coefs, BigInteger x) {
         //f(x) = a0 + a1x + a2x^2 + ...anx^n
         BigInteger y = BigInteger.ZERO;
@@ -196,9 +183,7 @@ public class SecretSharing {
 
     public static void main(String[] args)
     {
-        //System.out.println(preparation("potato"));
-        List<Key> keys = preparation("orange marmalade");
-        //getRandomNums();
+        List<Key> keys = preparation("dog");
 
         // get random 3 out of 5 keys
         HashSet<Integer> subsetKeys = new LinkedHashSet<>();
@@ -214,14 +199,8 @@ public class SecretSharing {
 
         System.out.println("Subetkeylist size: " + subsetKeyList.size());
 
-        List<Key> testKeyList = new ArrayList<>();
-        testKeyList.add(new Key(new Pair<>(2, BigInteger.valueOf(1942)), p));
-        testKeyList.add(new Key(new Pair<>(4, BigInteger.valueOf(3402)), p));
-        testKeyList.add(new Key(new Pair<>(5, BigInteger.valueOf(4414)), p));
 
-        System.out.println("P: " + p);
-
-        reconstruction(subsetKeyList);
+        System.out.println(reconstruction(subsetKeyList));
     }
 
 }
