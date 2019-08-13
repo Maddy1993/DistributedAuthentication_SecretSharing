@@ -32,6 +32,9 @@ public class ServiceHandler extends ClientAuthentication {
     //Host Address.
     protected String hostAddress;
 
+    //Host PortNumber.
+    protected Integer portNumber;
+
     //Current sequence number.
     protected static LocalDateTime currentSequenceNumber;
 
@@ -42,6 +45,7 @@ public class ServiceHandler extends ClientAuthentication {
         this.memoryObjectFileName += ":" + portNumber.toString() + ".json";
 
         //Host Address
+        this.portNumber = portNumber;
         this.hostAddress = "localhost";
 
         //create connection for the clients.
@@ -114,7 +118,9 @@ public class ServiceHandler extends ClientAuthentication {
             response.keyValue = responseValue;
         } else {
             response.type = MessageType.FAILURE;
-            response.keyValue = responseValue;
+            Map<String, String> r = new HashMap<>();
+            r.put("Address", hostAddress+":"+portNumber.toString());
+            response.keyValue = r;
         }
 
         return response;

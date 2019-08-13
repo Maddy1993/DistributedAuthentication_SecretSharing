@@ -212,7 +212,7 @@ public class RPCClient {
                     if (responseValue.type == MessageType.SUCCESS) {
                         System.out.println("The value associated with key: " + key + " is " + responseValue.keyValue.get(key));
                     } else {
-                        System.out.println("Key does not exist.");
+                        System.out.println("Key does not exist at: " + responseValue.keyValue.getOrDefault("Address", ""));
                     }
                     break;
                 } catch (TException e) {
