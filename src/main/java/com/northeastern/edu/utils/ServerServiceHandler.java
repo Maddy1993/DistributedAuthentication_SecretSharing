@@ -1,6 +1,9 @@
 package com.northeastern.edu.utils;
 
-import generated.thrift.impl.*;
+import generated.thrift.impl.CommunicationService;
+import generated.thrift.impl.MessageType;
+import generated.thrift.impl.OperationType;
+import generated.thrift.impl.ServerPacket;
 import org.apache.thrift.TException;
 import org.apache.thrift.protocol.TBinaryProtocol;
 import org.apache.thrift.protocol.TProtocol;
@@ -70,7 +73,7 @@ public class ServerServiceHandler extends ServiceHandler {
         }
         //Ping replicas to verify their availability.
         else {
-            for (CommunicationService.Client replica: this.replicas.keySet()) {
+            for (CommunicationService.Client replica : this.replicas.keySet()) {
                 if (replica.ping() != MessageType.SUCCESS) {
                     this.replicas.put(replica, false);
                 } else {
@@ -86,7 +89,7 @@ public class ServerServiceHandler extends ServiceHandler {
         //Store responses to proposal sent back by replicas.
         Map<CommunicationService.Client, ServerPacket> proposalResponses = new HashMap<>();
 
-        for (CommunicationService.Client replica: this.replicas.keySet()) {
+        for (CommunicationService.Client replica : this.replicas.keySet()) {
             if (this.replicas.get(replica)) {
                 //Construct the proposal message.
                 ServerPacket proposal = new ServerPacket();
@@ -143,7 +146,7 @@ public class ServerServiceHandler extends ServiceHandler {
     (Map<CommunicationService.Client, ServerPacket> responses) {
         Iterator<Map.Entry<CommunicationService.Client, ServerPacket>> entryIterator = responses.entrySet().iterator();
 
-        while (entryIterator.hasNext()){
+        while (entryIterator.hasNext()) {
 
             Map.Entry<CommunicationService.Client, ServerPacket> entry = entryIterator.next();
 
@@ -167,13 +170,23 @@ public class ServerServiceHandler extends ServiceHandler {
 
     //Calculates majority based on the filtered responses and the total number of replicas
     //available for the proposer.
-    private boolean calculateMajority(Map<CommunicationService.Client, ServerPacket> responses) {
-        int totalAvailableReplicas = replicas.size();
-        int totalResponses = responses.size();
+    private boolean hasMajority(Object responses) {
 
-        //Majority is when the total responses has at least 3/4ths of
-        //majority.
-        return totalResponses >= totalAvailableReplicas * 3/4;
+        int totalAvailableReplicas = replicas.size();
+        if (responses instanceof Map)
+        {
+            int totalResponses = ((Map) responses).size();
+
+            //Majority is when the total responses has at least 3/4ths of
+            //majority.
+            return totalResponses >= totalAvailableReplicas * 3 / 4;
+        } else if (responses instanceof Integer) {
+            return ((Integer)responses) >= totalAvailableReplicas * 3/4;
+        } else {
+            LOGGER.severe("Invalid response object type: " + responses.getClass().getName());
+            return false;
+        }
+
     }
 
     //Send accept proposals to the promised acceptors.
@@ -190,7 +203,7 @@ public class ServerServiceHandler extends ServiceHandler {
 
 
         Iterator<Map.Entry<CommunicationService.Client, ServerPacket>> entryIterator = responses.entrySet().iterator();
-        while (entryIterator.hasNext()){
+        while (entryIterator.hasNext()) {
             Map.Entry<CommunicationService.Client, ServerPacket> entry = entryIterator.next();
 
             //If acceptor is available
@@ -205,7 +218,13 @@ public class ServerServiceHandler extends ServiceHandler {
             }
         }
 
-        return calculateMajority(responses);
+        if (hasMajority(responses))
+        {
+            super.writeToMemory(value);
+            return true;
+        }
+
+        return false;
     }
 
     //If an acceptor receives an accept request for
@@ -221,6 +240,7 @@ public class ServerServiceHandler extends ServiceHandler {
             super.writeToMemory(message.proposalValue);
 
             //Reply to the proposer with a success.
+            promiseStatus = false;
             message.type = MessageType.SUCCESS;
         } else {
             message.type = MessageType.FAILURE;
@@ -237,7 +257,7 @@ public class ServerServiceHandler extends ServiceHandler {
 
         //If can't process, return a failure response to proposer
         //to increase efficiency rather wait on time out.
-        if(!canProcess) {
+        if (!canProcess) {
             response.type = MessageType.FAILURE;
             return response;
         }
@@ -258,17 +278,28 @@ public class ServerServiceHandler extends ServiceHandler {
                 String response = replica.getStoredValue(key);
 
                 //If the value exists, increment its count
-                if (majorityValue.containsKey(response)) {
-                    int value = majorityValue.get(response);
-                    majorityValue.put(response, ++value);
+                if (!response.isEmpty()) {
+                    if (majorityValue.containsKey(response)) {
+                        int value = majorityValue.get(response);
+                        majorityValue.put(response, ++value);
+                    } else {
+                        //Else add an entry.
+                        majorityValue.put(response, 1);
+                    }
                 } else {
-                    //Else add an entry.
-                    majorityValue.put(response, 1);
+                    String message = String.format("Value for key: {0} is not found at {1}", key, getAddressForClient(replica));
+                    LOGGER.warning(message);
                 }
             }
         }
 
         return majorityValue;
+    }
+
+    //Gets the socket address for a given client/server object.
+    private String getAddressForClient(CommunicationService.Client client) {
+        TSocket socket = (TSocket) client.getOutputProtocol().getTransport();
+        return socket.getSocket().getRemoteSocketAddress().toString();
     }
 
     @Override
@@ -287,7 +318,7 @@ public class ServerServiceHandler extends ServiceHandler {
     @Override
     protected boolean canWriteOrDelete(Map<String, String> value, OperationType operationType) throws TException {
         checkOrCreateConnection();
-        promiseStatus=false;
+        promiseStatus = false;
 
         //Initiate proposal to all the replicas.
         Map<CommunicationService.Client, ServerPacket> responses = sendProposalToReplicas(value, operationType);
@@ -296,7 +327,7 @@ public class ServerServiceHandler extends ServiceHandler {
         responses = identifyProposalValue(responses);
 
         //Check if the proposer has a majority.
-        boolean hasMajority = calculateMajority(responses);
+        boolean hasMajority = hasMajority(responses);
 
         //If it has majority, then send accept requests to
         //the acceptors.
@@ -315,16 +346,22 @@ public class ServerServiceHandler extends ServiceHandler {
             majorityValue = getMajorityValue(key, majorityValue);
 
             //Majority value is
-            String currentKey="";
+            String currentKey = "";
             int maxCount = 0;
-            for (String value: majorityValue.keySet()) {
+            for (String value : majorityValue.keySet()) {
                 if (maxCount < majorityValue.get(value)) {
                     maxCount = majorityValue.get(value);
                     currentKey = value;
                 }
             }
 
-            return currentKey;
+            if (hasMajority(maxCount))
+            {
+                return currentKey;
+            } else {
+                return "";
+            }
+
         } catch (IOException e) {
             LOGGER.severe("Error loading memory object");
             throw new TException("Error loading memory object: " + e.getMessage());
@@ -345,7 +382,7 @@ public class ServerServiceHandler extends ServiceHandler {
     public ServerPacket acceptProposal(ServerPacket packet) throws TException {
         if (packet.type == MessageType.ACCEPT_REQUEST) {
             return processAcceptProposal(packet);
-        } else if (packet.type == MessageType.PROPOSAL){
+        } else if (packet.type == MessageType.PROPOSAL) {
             return processProposalRequest(packet);
         }
 
@@ -363,7 +400,7 @@ public class ServerServiceHandler extends ServiceHandler {
         //Get the value from the current system.
         try {
             this.keyValuePair = (Map<String, String>) super.loadMemoryObject(1);
-            return this.keyValuePair.get(key);
+            return this.keyValuePair.getOrDefault(key, "");
         } catch (IOException e) {
             LOGGER.severe("Error reading file from memory: " + e.getMessage());
             return "";
