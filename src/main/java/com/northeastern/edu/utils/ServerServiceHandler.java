@@ -220,7 +220,13 @@ public class ServerServiceHandler extends ServiceHandler {
 
         if (hasMajority(responses))
         {
-            super.writeToMemory(value);
+            try {
+                if (operationType != OperationType.LOGIN) {
+                    super.writeToMemory(value);
+                }
+            } catch (IOException e) {
+                throw new TException(e.getMessage());
+            }
             return true;
         }
 
@@ -231,13 +237,18 @@ public class ServerServiceHandler extends ServiceHandler {
     //a proposal numbered n, it accepts the proposal
     //unless it has already responded to a prepare request
     //having a number greater than n.
-    private ServerPacket processAcceptProposal(ServerPacket message) throws IOException {
+    private ServerPacket processAcceptProposal(ServerPacket message) throws IOException, TException {
         //Check if the proposed sequence number
         //is greater than the current sequence number (which represents
         //the sequence number of the latest accepted proposal)
         if (!LocalDateTime.parse(message.sequence_number).isBefore(currentSequenceNumber)) {
             //The acceptor has learned the value successfully.
             this.keyValuePair = (Map<String, String>) loadMemoryObject(1);
+            if (this.keyValuePair == null) {
+                this.keyValuePair = new HashMap<>();
+            }
+
+            this.clientKeys = (Map<String, List<String>>) loadKeysMemoryObject(1);
             if (message.operationType == OperationType.DELETE) {
                 this.keyValuePair = (Map<String, String>) loadMemoryObject(1);
 
@@ -245,11 +256,43 @@ public class ServerServiceHandler extends ServiceHandler {
                     this.keyValuePair.remove(key);
                 }
 
+                super.writeToMemory(this.keyValuePair);
             } else if(message.operationType == OperationType.WRITE) {
                 this.keyValuePair.putAll(message.proposalValue);
-            }
+                super.writeToMemory(this.keyValuePair);
+            } else if (message.operationType == OperationType.LOGIN) {
 
-            super.writeToMemory(this.keyValuePair);
+                //For each key in the proposal value.
+                if (this.clientKeys == null) {
+                    this.clientKeys = new HashMap<>();
+                }
+
+                for (String key: message.proposalValue.keySet()) {
+
+                    if (this.clientKeys.containsKey(key)) {
+                        List<String> value = this.clientKeys.get(key);
+
+                        if (value.size() >=3) {
+                            value = new ArrayList<>();
+                        }
+
+                        value.add(message.proposalValue.get(key));
+
+                        this.clientKeys.put(key, value);
+
+                    } else {
+                        List<String> value = new ArrayList<>();
+                        value.add(message.proposalValue.get(key));
+                        this.clientKeys.put(key, value);
+                    }
+
+                    //Add the commit time to memory.
+                    Map<String, String> commitTime = new HashMap<>();
+                    commitTime.put(key, LocalDateTime.now().toString());
+                    writeCommitTimeToMemory(commitTime);
+                }
+                super.writeKeysToMemory(this.clientKeys);
+            }
 
             //Reply to the proposer with a success.
             promiseStatus = false;

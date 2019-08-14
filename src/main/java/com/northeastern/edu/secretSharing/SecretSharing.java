@@ -1,7 +1,11 @@
 package com.northeastern.edu.secretSharing;
 
 import javafx.util.Pair;
+import org.json.simple.JSONObject;
+import org.json.simple.parser.JSONParser;
+import org.json.simple.parser.ParseException;
 
+import java.io.*;
 import java.math.BigDecimal;
 import java.math.BigInteger;
 import java.util.*;
@@ -18,6 +22,11 @@ public class SecretSharing {
     private static BigInteger secret; // s
     private static int n = 5;  // NUM_SHARES
     private static int k = 3; // NUM_SUBSET_REQUIRED
+    private static String secretStorageFileName;
+
+    public SecretSharing(String fileName) {
+        secretStorageFileName = fileName;
+    }
 
     /**
      * Preparation phase of Secret Sharing
@@ -28,11 +37,12 @@ public class SecretSharing {
      *
      * @param s
      */
-    public static List<Key> preparation(String s) {
+    public List<Key> preparation(String s) throws IOException {
         secretString = s;
         // Convert input secret into BigInt format
         secret = new BigInteger(1, s.getBytes());
-        System.out.println("Secret: " + secret);
+        LOGGER.info("Secret: " + secret);
+        writeSecretToMemory();
 
         // obtain k - 1 random numbers (a1, a2, a3, etc.) to construct polynomial:
         // f(x) = a0 + a1x + a2x^2 + ...
@@ -51,7 +61,7 @@ public class SecretSharing {
      *
      * @param clientKeyList
      */
-    public static boolean reconstruction(List<Key> clientKeyList) {
+    public boolean reconstruction(List<Key> clientKeyList) throws IOException {
         // Does client have enough keys to reconstruct secret?
         if (clientKeyList.size() != k) {
             return false;
@@ -95,12 +105,20 @@ public class SecretSharing {
 
         System.out.println("Y big Integer: " + yConverted);
 
-        // Check that constructd Y value is equal to Secret value
-        if (yConverted.equals(secret)) {
-            return true;
-        } else {
-            return false;
+        String sec = (String) loadSecretFromMemory(1);
+
+        if (!sec.isEmpty())
+        {
+            BigInteger storedSecret = new BigInteger(sec);
+            // Check that constructd Y value is equal to Secret value
+            if (yConverted.equals(storedSecret)) {
+                return true;
+            } else {
+                return false;
+            }
         }
+
+        return false;
 
     }
 
@@ -180,25 +198,81 @@ public class SecretSharing {
         return y;
     }
 
-    public static void main(String[] args) {
-        List<Key> keys = preparation("dog");
+//    public static void main(String[] args) {
+//        List<Key> keys = preparation("dog");
+//
+//        // get random 3 out of 5 keys
+//        HashSet<Integer> subsetKeys = new LinkedHashSet<>();
+//        while (subsetKeys.size() < 3) {
+//            Random r = new Random();
+//            subsetKeys.add(r.nextInt(n));  // [0...n-1])
+//        }
+//        List<Key> subsetKeyList = new ArrayList<>();
+//
+//        for (Integer ind : subsetKeys) {
+//            subsetKeyList.add(keys.get(ind));
+//        }
+//
+//        System.out.println(keys.get(0).toString());
+//        System.out.println("Subset key list size: " + subsetKeyList.size());
+//
+//
+//        System.out.println(reconstruction(subsetKeyList));
+//    }
 
-        // get random 3 out of 5 keys
-        HashSet<Integer> subsetKeys = new LinkedHashSet<>();
-        while (subsetKeys.size() < 3) {
-            Random r = new Random();
-            subsetKeys.add(r.nextInt(n));  // [0...n-1])
+    //Loads the client password value data store from memory.
+    protected Object loadSecretFromMemory(int mode) throws IllegalStateException, IOException {
+        try {
+            FileReader reader = new FileReader(secretStorageFileName);
+            JSONParser jsonParser = new JSONParser();
+            return ((Map<String, String>)jsonParser.parse(reader)).getOrDefault("secret", "");
+        } catch (IOException e) {
+            String message = "Error loading data from memory: " + e.getMessage();
+            LOGGER.severe(message);
+
+            if (mode == 0) {
+                new File(secretStorageFileName).createNewFile();
+            } else {}
+
+        } catch (ParseException e) {
+            LOGGER.info("File: " + secretStorageFileName + " is empty.");
         }
-        List<Key> subsetKeyList = new ArrayList<>();
 
-        for (Integer ind : subsetKeys) {
-            subsetKeyList.add(keys.get(ind));
-        }
-
-        System.out.println("Subset key list size: " + subsetKeyList.size());
-
-
-        System.out.println(reconstruction(subsetKeyList));
+        return defaultMemoryObject();
     }
 
+    //Generates the structure of a default memory object
+    protected Object defaultMemoryObject() {
+        Map<String, Object> defaultMemoryObject = new HashMap<>();
+        return defaultMemoryObject;
+    }
+
+    //Write the learned keys to memory
+    void writeSecretToMemory() throws IOException {
+        JSONObject jsonObject = new JSONObject();
+
+        try {
+            //Creating a map of values to store.
+            FileReader reader = new FileReader(secretStorageFileName);
+            JSONParser jsonParser = new JSONParser();
+
+            try {
+                jsonObject = (JSONObject) jsonParser.parse(reader);
+            } catch (ParseException e) {
+                jsonObject = new JSONObject();
+            }
+
+            reader.close();
+
+        } catch (IOException e) {
+            LOGGER.severe("Error while saving the file to memory." + e.getMessage());
+            new File(secretStorageFileName).createNewFile();
+        }
+
+        OutputStream writer = new FileOutputStream(secretStorageFileName);
+        jsonObject.put("secret", secret.toString());
+        writer.write(jsonObject.toJSONString().getBytes());
+        writer.flush();
+        writer.close();
+    }
 }

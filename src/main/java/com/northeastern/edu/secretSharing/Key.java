@@ -16,4 +16,12 @@ public class Key
         return point;
     }
 
+    @Override
+    public String toString() {
+        if (point != null) {
+            return point.toString();
+        } else {
+            return "";
+        }
+    }
 }

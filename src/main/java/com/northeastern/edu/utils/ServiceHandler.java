@@ -1,13 +1,17 @@
 package com.northeastern.edu.utils;
 
+import com.northeastern.edu.secretSharing.Key;
 import generated.thrift.impl.*;
 
+import javafx.util.Pair;
 import org.apache.thrift.TException;
 import org.json.simple.JSONObject;
 import org.json.simple.parser.JSONParser;
 import org.json.simple.parser.ParseException;
 
 import java.io.*;
+import java.math.BigInteger;
+import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -24,9 +28,6 @@ public class ServiceHandler extends ClientAuthentication {
     //Data-store is represented as key-value pair where key and value strings.
     protected Map<String, String> keyValuePair;
 
-    //FileName to canWriteOrDelete and read data from memory.
-    private String memoryObjectFileName = "data";
-
     //Replica Port Numbers on localhost.
     protected List<Integer> replicaPorts;
 
@@ -42,9 +43,7 @@ public class ServiceHandler extends ClientAuthentication {
     //Constructor for initializing the key-value store.
     public ServiceHandler(List<Integer> replicaPorts, Integer portNumber) throws IOException {
 
-        super();
-        //Construct file name for the server.
-        this.memoryObjectFileName += ":" + portNumber.toString() + ".json";
+        super(portNumber);
 
         //Host Address
         this.portNumber = portNumber;
@@ -81,25 +80,90 @@ public class ServiceHandler extends ClientAuthentication {
         return defaultMemoryObject();
     }
 
-    //Generates the structure of a default memory object
-    private Object defaultMemoryObject() {
-        Map<String, Object> defaultMemoryObject = new HashMap<>();
-        return defaultMemoryObject;
-    }
-
     //Write the learned value to memory
-    void writeToMemory(Map<String, String> keyValuePair) {
+    void writeToMemory(Map<String, String> keyValuePair) throws IOException {
+
+        JSONObject jsonObject = new JSONObject();
         try {
             //Creating a map of values to store.
-            JSONObject jsonObject = new JSONObject();
-            OutputStream writer = new FileOutputStream(memoryObjectFileName);
-            jsonObject.put("data", keyValuePair);
-            writer.write(jsonObject.toJSONString().getBytes());
-            writer.flush();
-            writer.close();
+            FileReader reader = new FileReader(memoryObjectFileName);
+            JSONParser jsonParser = new JSONParser();
+
+            try {
+                jsonObject = (JSONObject) jsonParser.parse(reader);
+            } catch (ParseException e) {
+                jsonObject = new JSONObject();
+            }
+
+            reader.close();
+
         } catch (IOException e) {
             LOGGER.severe("Error while saving the file to memory." + e.getMessage());
+            new File(memoryObjectFileName).createNewFile();
         }
+
+        OutputStream writer = new FileOutputStream(memoryObjectFileName);
+        jsonObject.put("data", keyValuePair);
+        writer.write(jsonObject.toJSONString().getBytes());
+        writer.flush();
+        writer.close();
+    }
+
+    //Write the learned keys to memory
+    void writeKeysToMemory(Map<String, List<String>> keyValuePair) throws IOException {
+        JSONObject jsonObject = new JSONObject();
+
+        try {
+            //Creating a map of values to store.
+            FileReader reader = new FileReader(memoryObjectFileName);
+            JSONParser jsonParser = new JSONParser();
+
+            try {
+                jsonObject = (JSONObject) jsonParser.parse(reader);
+            } catch (ParseException e) {
+                jsonObject = new JSONObject();
+            }
+
+            reader.close();
+
+        } catch (IOException e) {
+            LOGGER.severe("Error while saving the file to memory." + e.getMessage());
+            new File(memoryObjectFileName).createNewFile();
+        }
+
+        OutputStream writer = new FileOutputStream(memoryObjectFileName);
+        jsonObject.put("keys", keyValuePair);
+        writer.write(jsonObject.toJSONString().getBytes());
+        writer.flush();
+        writer.close();
+    }
+
+    //Write the learned keys to memory
+    void writeCommitTimeToMemory(Map<String, String> keyValuePair) throws IOException {
+        JSONObject jsonObject = new JSONObject();
+
+        try {
+            //Creating a map of values to store.
+            FileReader reader = new FileReader(memoryObjectFileName);
+            JSONParser jsonParser = new JSONParser();
+
+            try {
+                jsonObject = (JSONObject) jsonParser.parse(reader);
+            } catch (ParseException e) {
+                jsonObject = new JSONObject();
+            }
+            reader.close();
+
+        } catch (IOException e) {
+            LOGGER.severe("Error while saving the file to memory." + e.getMessage());
+            new File(memoryObjectFileName).createNewFile();
+        }
+
+        OutputStream writer = new FileOutputStream(memoryObjectFileName);
+        jsonObject.put("commit", keyValuePair);
+        writer.write(jsonObject.toJSONString().getBytes());
+        writer.flush();
+        writer.close();
     }
 
     //Definition needs to be provided by child class.
@@ -132,6 +196,11 @@ public class ServiceHandler extends ClientAuthentication {
     public List<String> getKeys() throws TException {
         try {
             this.keyValuePair = (Map<String, String>) loadMemoryObject(1);
+
+            if (this.keyValuePair == null) {
+                return new ArrayList<>();
+            }
+
             return new ArrayList<>(keyValuePair.keySet());
         } catch (IOException e) {
             LOGGER.severe("Error loading memory object");
@@ -140,29 +209,111 @@ public class ServiceHandler extends ClientAuthentication {
     }
 
     @Override
-    public RequestPacket storeKeyValue(Map<String, String> keyValue) throws TException {
+    public RequestPacket storeKeyValue(Map<String, String> keyValue, OperationType operationType) throws TException {
         RequestPacket response = new RequestPacket();
 
-        if (canWriteOrDelete(keyValue, OperationType.WRITE)) {
-            this.keyValuePair.putAll(keyValue);
-            writeToMemory(this.keyValuePair);
-            response.type = MessageType.SUCCESS;
-        } else {
-            response.type = MessageType.FAILURE;
+        if (canWriteOrDelete(keyValue, operationType)) {
+            if (operationType == OperationType.WRITE) {
+                this.keyValuePair.putAll(keyValue);
+                try {
+                    writeToMemory(this.keyValuePair);
+                } catch (IOException e) {
+                    throw new TException(e.getMessage());
+                }
+            } else if (operationType == OperationType.LOGIN) {
+
+                //for each key in the key value
+                for (String key : keyValue.keySet()) {
+                    //Check the last commit time for the client.
+                    if (this.clientKeys.containsKey(key)) {
+                        List<String> currentKeys = this.clientKeys.get(key);
+
+                        if (currentKeys.size() >=3) {
+                            currentKeys = new ArrayList<>();
+                        }
+
+                        currentKeys.add(keyValue.get(key));
+                        this.clientKeys.put(key, currentKeys);
+
+                    } else {
+                        List<String> currentKeys = new ArrayList<>();
+                        currentKeys.add(keyValue.get(key));
+                        this.clientKeys.put(key, currentKeys);
+                    }
+
+                    //Add the commit time to memory.
+                    Map<String, String> commitTime = new HashMap<>();
+                    commitTime.put(key, LocalDateTime.now().toString());
+                    try {
+                        writeCommitTimeToMemory(commitTime);
+                    } catch (IOException e) {
+                        throw new TException(e.getMessage());
+                    }
+                }
+
+                try {
+                    writeKeysToMemory(this.clientKeys);
+                } catch (IOException e) {
+                    throw new TException(e.getMessage());
+                }
+                response.type = MessageType.SUCCESS;
+            } else {
+                response.type = MessageType.FAILURE;
+            }
+
+        }
+            return response;
         }
 
-        return response;
+    /**
+     * Validates if the request to add keys is a new commit.
+     *
+     * @param key The commit for the key
+     * @return
+     */
+    protected boolean isNewCommit(String key) throws TException{
+        try {
+            this.lastCommittedDate = (Map<String, String>) loadCommitTimesMemoryObject(1);
+            if (this.lastCommittedDate == null) {
+                this.lastCommittedDate = new HashMap<>();
+                return true;
+            } else if (this.lastCommittedDate.containsKey(key)) {
+                LocalDateTime storedDate = LocalDateTime.parse(this.lastCommittedDate.get(key));
+                return Duration.between(storedDate, LocalDateTime.now()).getSeconds() > 60;
+//                return false;
+            } else {
+                return true;
+            }
+        } catch (IOException e) {
+            LOGGER.severe("Error loading commit times from memory: " + e.getMessage());
+            throw new TException("Error loading commit times from memory: " + e.getMessage());
+        }
     }
 
     @Override
-    public RequestPacket deleteKey(String key) throws TException {
+    public RequestPacket deleteKey(String key, OperationType operationType) throws TException {
         RequestPacket response = new RequestPacket();
 
         Map<String, String> keyValue = new HashMap<>();
         keyValue.put(key, this.keyValuePair.get(key));
-        if (canWriteOrDelete(keyValue, OperationType.DELETE)) {
-            this.keyValuePair.remove(key);
-            writeToMemory(this.keyValuePair);
+
+        if (canWriteOrDelete(keyValue, operationType)) {
+            if (operationType == OperationType.DELETE) {
+                this.keyValuePair.remove(key);
+                try {
+                    writeToMemory(this.keyValuePair);
+                } catch (IOException e) {
+                    throw new TException(e.getMessage());
+                }
+            } else if(operationType == OperationType.LOGIN) {
+                this.clientKeys.remove(key);
+                try {
+                    writeKeysToMemory(this.clientKeys);
+                } catch (IOException e) {
+                    throw new TException(e.getMessage());
+                }
+            }
+
             response.type = MessageType.SUCCESS;
         } else {
             response.type = MessageType.FAILURE;

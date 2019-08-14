@@ -47,6 +47,9 @@ public class RPCClient {
     //Random element seed
     private static Random rand;
 
+    //Name of the client.
+    private static String clientName;
+
     /**
      * Formats the message to be printed to the output stream.
      *
@@ -78,10 +81,11 @@ public class RPCClient {
      * @param args The command line arguments passed to the program.
      */
     private static void parseArguments(String[] args) {
-        if (args.length == 2) {
+        if (args.length == 3) {
             try {
                 serverAddress = args[0];
                 portNumber = Integer.parseInt(args[1]);
+                clientName = args[2];
             } catch (NumberFormatException e) {
                 LOGGER.severe("The arguments format doesn't match: " + e.getMessage());
                 formatMessage("The port number argument type don't match.");
@@ -161,12 +165,17 @@ public class RPCClient {
     private static void perform(CommunicationService.Client server) throws TException {
 
         availableServer = server;
+
+        performLogin(server);
+
+        //Login with the connecting server before performing operations
         do {
+            Scanner input = new Scanner(System.in);
             formatMessage("\nPlease choose the operation to perform:");
             System.out.println("\t1. Get Data.\n\t2. Save Data.\n\t3. Delete data.\n\t4. Quit");
             System.out.println("\nEnter the option number: ");
 
-            Scanner input = new Scanner(System.in);
+
             int option = 0;
             try {
                 option = input.nextInt();
@@ -176,6 +185,31 @@ public class RPCClient {
 
            performSelectedOperation(option, availableServer, input);
         } while (true);
+    }
+
+    /**
+     * Performs the login
+     * @param server
+     */
+    private static void performLogin(CommunicationService.Client server) throws TException {
+        //Login with the connecting server before performing operations
+        Scanner input = new Scanner(System.in);
+        formatMessage("\nEnter the Password to Login: \n");
+
+        String password;
+        do {
+            formatMessage("(Length of the password needs to be 3 or smaller and should not be empty)\n");
+            password = input.nextLine();
+        } while (password.isEmpty() || password.length() > 3);
+
+        RequestPacket response = server.login(password, clientName);
+        if (response.type == MessageType.FAILURE) {
+            System.out.println("LOGIN Failed with server: " + getAddressForClient(availableServer));
+        } else if (response.type == MessageType.SUCCESS_WRITE) {
+            System.out.println("\nSuccessfully authenticated\n");
+        } else if (response.type == MessageType.SUCCESS) {
+            System.out.println("\nSign Up Succeeded\n");
+        }
     }
 
     //Performs the operation based on the input operation.
@@ -239,7 +273,7 @@ public class RPCClient {
                 try {
                     Map<String, String> mapValue = new HashMap<>();
                     mapValue.put(key, value);
-                    serverResponse = server.storeKeyValue(mapValue);
+                    serverResponse = server.storeKeyValue(mapValue, OperationType.WRITE);
 
                     if (serverResponse.type == MessageType.FAILURE) {
                         System.out.println("Error saving the keys at the server");
@@ -273,7 +307,7 @@ public class RPCClient {
                     } while (key.isEmpty());
 
                     //Get the response for deletion from the server.
-                    serverResponse = server.deleteKey(key);
+                    serverResponse = server.deleteKey(key, OperationType.DELETE);
 
                     if (serverResponse.type == MessageType.SUCCESS) {
                         System.out.println("Key: " + key + " successfully removed");
