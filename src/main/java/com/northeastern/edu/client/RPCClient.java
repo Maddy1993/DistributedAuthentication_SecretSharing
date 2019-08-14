@@ -310,6 +310,7 @@ public class RPCClient {
                     LOGGER.info("Connected to replica at: " + getAddressForClient(client));
                     formatMessage("Connected to replica at: " + getAddressForClient(client));
                     availableClients.add(client);
+                    availableServer = client;
                     return client;
                 }
             } catch (TException e) {
@@ -319,7 +320,6 @@ public class RPCClient {
             }
         }
 
-        availableServer = availableClients.get(rand.nextInt(availableClients.size()));
         LOGGER.severe("No Available Servers");
         formatMessage("No available servers");
         LOGGER.severe("Exiting program");

@@ -1,21 +1,19 @@
 package com.northeastern.edu.secretSharing;
 
+import javafx.util.Pair;
+
 import java.math.BigDecimal;
 import java.math.BigInteger;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.LinkedHashSet;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Random;
-import java.util.Set;
-
-import javafx.util.Pair;
+import java.util.*;
+import java.util.logging.Logger;
 
 /**
  * Class prepares and reconstructs the secret keys
  */
 public class SecretSharing {
+    //Logger for the class.
+    private static Logger LOGGER = Logger.getLogger(SecretSharing.class.getName());
+
     private static String secretString;
     private static BigInteger secret; // s
     private static int n = 5;  // NUM_SHARES
@@ -23,36 +21,34 @@ public class SecretSharing {
 
     /**
      * Preparation phase of Secret Sharing
-     *  1.) Randomly obtain k-1 numbers
-     *  2.) Construct polynomial
-     *  3.) Construct n points
-     *  4.) Create list of n keys containing point and value p
+     * 1.) Randomly obtain k-1 numbers
+     * 2.) Construct polynomial
+     * 3.) Construct n points
+     * 4.) Create list of n keys containing point and value p
+     *
      * @param s
      */
     public static List<Key> preparation(String s) {
         secretString = s;
         // Convert input secret into BigInt format
         secret = new BigInteger(1, s.getBytes());
-        //secret = BigInteger.valueOf(1234);
         System.out.println("Secret: " + secret);
 
         // obtain k - 1 random numbers (a1, a2, a3, etc.) to construct polynomial:
         // f(x) = a0 + a1x + a2x^2 + ...
-        List <BigInteger> coefs = getCoefficients();
-
-//        // Generate field size, p
-//        p = getFieldSize();
+        List<BigInteger> coefficients = getCoefficients();
 
         // Generate list of Keys
-        return generateKeys(coefs);
+        return generateKeys(coefficients);
     }
 
     /**
      * Reconstruction phase of Secret Sharing.
-     *  1.) Need k keys to reconstruct secret -> ELSE reconstruction fails
-     *  2.) Reconstruct polynomial using Lagrange Polynomial Interpolation
-     *  3.) Solve for constant value to obtain original secret
-     *  4.) If reconstructd constant does not match original secret -> reconstruction fails
+     * 1.) Need k keys to reconstruct secret -> ELSE reconstruction fails
+     * 2.) Reconstruct polynomial using Lagrange Polynomial Interpolation
+     * 3.) Solve for constant value to obtain original secret
+     * 4.) If reconstructd constant does not match original secret -> reconstruction fails
+     *
      * @param clientKeyList
      */
     public static boolean reconstruction(List<Key> clientKeyList) {
@@ -102,8 +98,7 @@ public class SecretSharing {
         // Check that constructd Y value is equal to Secret value
         if (yConverted.equals(secret)) {
             return true;
-        }
-        else {
+        } else {
             return false;
         }
 
@@ -111,6 +106,7 @@ public class SecretSharing {
 
     /**
      * Creates the polynomial to the k-1 term: f(x) = a0 + a1x + a2x^2 + ... + (ak-1(x^k-1
+     *
      * @return list of the coeficients in the polynomial, where a0 = value of secret
      */
     private static List<BigInteger> getCoefficients() {
@@ -146,6 +142,7 @@ public class SecretSharing {
 
     /**
      * Constructs n points from the polynomial
+     *
      * @return List of n points along the polynomial
      */
     private static List<Key> generateKeys(List<BigInteger> coefs) {
@@ -153,7 +150,7 @@ public class SecretSharing {
         Key key;
         // f(x) = a0 + a1x + a2x^2 + ...
         // Calculates points for when x = 1, 2, ...n
-        for (int i = 1; i<= n; i++) {
+        for (int i = 1; i <= n; i++) {
             BigInteger x = BigInteger.valueOf(i);
             // create key with values point and p
             // Pair<x,y<, where y = f(x) mod p
@@ -166,6 +163,7 @@ public class SecretSharing {
 
     /**
      * Calculates the Y value for a given X from the polynomial f(x)
+     *
      * @param coefs
      * @param x
      * @return y value from f(x)
@@ -178,11 +176,11 @@ public class SecretSharing {
             BigInteger xp = x.pow(i);
             y = y.add(coefs.get(i).multiply(xp));
         }
+
         return y;
     }
 
-    public static void main(String[] args)
-    {
+    public static void main(String[] args) {
         List<Key> keys = preparation("dog");
 
         // get random 3 out of 5 keys
@@ -197,7 +195,7 @@ public class SecretSharing {
             subsetKeyList.add(keys.get(ind));
         }
 
-        System.out.println("Subetkeylist size: " + subsetKeyList.size());
+        System.out.println("Subset key list size: " + subsetKeyList.size());
 
 
         System.out.println(reconstruction(subsetKeyList));

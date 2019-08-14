@@ -35,7 +35,7 @@ struct ServerPacket {
 
 //Interface for client to server communication and server to server communication
 service CommunicationService {
-    RequestPacket   login(1:string hashedPassword),
+    RequestPacket   login(1:string password, 2:string clientAddress),
     RequestPacket   getValueForKey(1:string key),
     list<string>    getKeys(),
     RequestPacket   storeKeyValue(1:map<string, string> keyValue),

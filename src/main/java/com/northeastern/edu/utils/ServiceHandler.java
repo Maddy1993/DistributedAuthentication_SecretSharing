@@ -16,6 +16,7 @@ import java.util.Map;
 import java.util.logging.Logger;
 
 public class ServiceHandler extends ClientAuthentication {
+
     //Logger for the class.
     private static Logger LOGGER = Logger.getLogger(ServiceHandler.class.getName());
 
@@ -41,6 +42,7 @@ public class ServiceHandler extends ClientAuthentication {
     //Constructor for initializing the key-value store.
     public ServiceHandler(List<Integer> replicaPorts, Integer portNumber) throws IOException {
 
+        super();
         //Construct file name for the server.
         this.memoryObjectFileName += ":" + portNumber.toString() + ".json";
 
